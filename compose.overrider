@@ -1,0 +1,108 @@
+"""
+Created by @RajdeepVerma
+"""
+
+import yaml
+import os
+import sys
+import subprocess
+
+def load_compose_file():
+    # Try docker-compose.yaml first
+    if os.path.exists("docker-compose.yaml"):
+        with open("docker-compose.yaml", "r") as file:
+            return yaml.load(file, Loader=yaml.FullLoader)
+    # Fall back to docker-compose.yml
+    elif os.path.exists("docker-compose.yml"):
+        with open("docker-compose.yml", "r") as file:
+            return yaml.load(file, Loader=yaml.FullLoader)
+    else:
+        raise FileNotFoundError("No docker-compose.yaml or docker-compose.yml found")
+
+def load_deployment_config():
+    # Try deployment-config.yaml first
+    if os.path.exists("deployment-config.yaml"):
+        with open("deployment-config.yaml", "r") as file:
+            return yaml.load(file, Loader=yaml.FullLoader)
+    # Fall back to deployment-config.yml
+    elif os.path.exists("deployment-config.yml"):
+        with open("deployment-config.yml", "r") as file:
+            return yaml.load(file, Loader=yaml.FullLoader)
+    else:
+        raise FileNotFoundError("No deployment-config.yaml or deployment-config.yml found")
+
+# Try to load the docker-compose file, exit if not found
+try:
+    # Load docker-compose configuration
+    docker_compose = load_compose_file()
+    # Load deployment configuration
+    deployment_config = load_deployment_config()
+except FileNotFoundError as e:
+    print(f"Error: {e}")
+    sys.exit(1)
+
+# Extract deployment configuration values
+ConnectorName = deployment_config['name']
+DomainName = deployment_config['domain']
+
+# Ensure networks configuration exists at root level
+if 'networks' not in docker_compose:
+    docker_compose['networks'] = {}
+
+# Add/update 'frontend' network at root level
+docker_compose['networks']['frontend'] = { 'external': True }
+
+# Get the first service configuration from docker-compose
+CONTAINER_NAME, ContainerConfig = next(
+    iter(docker_compose['services'].items()))
+
+# Remove ports configuration as it's no longer needed
+ContainerConfig.pop('ports')
+
+# Ensure networks configuration exists
+if 'networks' not in ContainerConfig:
+    ContainerConfig['networks'] = {}
+
+# Add/update 'frontend' network configuration
+ContainerConfig['networks']['frontend'] = {}
+
+# Ensure labels configuration exists
+if 'labels' not in ContainerConfig:
+    ContainerConfig['labels'] = []
+
+# Add/update container labels as a list
+ContainerConfig['labels'] = [
+    'traefik.enable=true',
+    f'traefik.http.routers.{ConnectorName}.entrypoints=web',
+    f'traefik.http.routers.{ConnectorName}.rule=Host(`{DomainName}`)'
+]
+
+# Write the modified configuration to docker-compose.override.yaml
+with open('docker-compose.override.yaml', 'w') as file:
+    yaml.dump(docker_compose, file, sort_keys=False, indent=2, default_flow_style=False)
+
+print("Generated docker-compose.override.yaml successfully")
+
+# Deploy using docker-compose with clean deployment
+try:
+    print("Starting clean deployment...")
+
+    # Stop existing containers
+    subprocess.run(["docker-compose", "stop"], check=True)
+
+    # Remove existing containers
+    subprocess.run(["docker-compose", "rm", "-f"], check=True)
+
+    # Clean up system (remove unused containers, networks, images)
+    subprocess.run(["docker", "system", "prune", "-f"], check=True)
+
+    # Pull latest images
+    subprocess.run(["docker-compose", "pull"], check=True)
+
+    # Deploy with new configuration (up -d for detached mode)
+    subprocess.run(["docker-compose", "up", "-d"], check=True)
+
+    print(f"Successfully deployed {ConnectorName} with clean environment")
+except subprocess.CalledProcessError as e:
+    print(f"Error during deployment: {e}")
+    sys.exit(1)
