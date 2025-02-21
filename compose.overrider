@@ -128,30 +128,39 @@ if 'networks' not in docker_compose:
 # Add/update 'frontend' network at root level
 docker_compose['networks']['frontend'] = { 'external': True }
 
-# Get the first service configuration from docker-compose
-CONTAINER_NAME, ContainerConfig = next(
-    iter(docker_compose['services'].items()))
+# Ensure services exist
+if 'services' not in docker_compose or not docker_compose['services']:
+    print("Error: No services found in docker-compose file")
+    sys.exit(1)
 
-# Remove ports configuration as it's no longer needed
-ContainerConfig.pop('ports')
+# Get first container name for later use
+CONTAINER_NAME = next(iter(docker_compose['services'].keys()))
 
-# Ensure networks configuration exists
-if 'networks' not in ContainerConfig:
-    ContainerConfig['networks'] = {}
+# Process all containers
+for service_name, service_config in docker_compose['services'].items():
+    # Remove ports from all containers if they exist
+    if 'ports' in service_config:
+        service_config.pop('ports')
 
-# Add/update 'frontend' network configuration
-ContainerConfig['networks']['frontend'] = {}
+    # Add frontend network only to the first container
+    if service_name == CONTAINER_NAME:
+        # Ensure networks configuration exists for the first container
+        if 'networks' not in service_config:
+            service_config['networks'] = {}
 
-# Ensure labels configuration exists
-if 'labels' not in ContainerConfig:
-    ContainerConfig['labels'] = []
+        # Add frontend network to first container
+        service_config['networks']['frontend'] = {}
 
-# Add/update container labels as a list
-ContainerConfig['labels'] = [
-    'traefik.enable=true',
-    f'traefik.http.routers.{ConnectorName}.entrypoints=web',
-    f'traefik.http.routers.{ConnectorName}.rule=Host(`{DomainName}`)'
-]
+        # Ensure labels configuration exists
+        if 'labels' not in service_config:
+            service_config['labels'] = []
+
+        # Add/update container labels as a list
+        service_config['labels'] = [
+            'traefik.enable=true',
+            f'traefik.http.routers.{ConnectorName}.entrypoints=web',
+            f'traefik.http.routers.{ConnectorName}.rule=Host(`{DomainName}`)'
+        ]
 
 # Write the modified configuration to docker-compose.override.yaml
 with open('docker-compose.override.yaml', 'w') as file:
