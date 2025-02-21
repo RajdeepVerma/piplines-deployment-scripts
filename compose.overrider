@@ -9,14 +9,56 @@ import subprocess
 import shutil
 
 def check_docker():
-    """Check if Docker is available"""
+    """Check if Docker is available and diagnose common issues"""
+    # Check if running in Jenkins
+    is_jenkins = 'JENKINS_HOME' in os.environ
+
     if not shutil.which('docker'):
         print("Error: Docker is not installed or not in PATH")
+        if is_jenkins:
+            print("Jenkins environment detected. Please ensure:")
+            print("1. Docker is installed on the Jenkins agent")
+            print("2. Jenkins user is in the docker group")
+            print("3. Jenkins has been restarted after group changes")
         sys.exit(1)
+
     try:
-        subprocess.run(['docker', 'info'], check=True, capture_output=True)
-    except subprocess.CalledProcessError:
-        print("Error: Docker daemon is not running")
+        # Try to get more detailed error information
+        result = subprocess.run(
+            ['docker', 'info'],
+            check=False,  # Don't exit immediately on error
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            print("Error: Cannot connect to Docker daemon")
+            print(f"Docker error: {result.stderr.strip()}")
+
+            if is_jenkins:
+                print("\nJenkins-specific troubleshooting:")
+                print("1. Verify Docker socket permissions:")
+                print("   $ ls -l /var/run/docker.sock")
+                print("2. Check if Jenkins user can access Docker:")
+                print("   $ groups jenkins")
+                print("3. Ensure Docker service is running:")
+                print("   $ systemctl status docker")
+
+                # Check Docker socket existence and permissions
+                docker_socket = '/var/run/docker.sock'
+                if os.path.exists(docker_socket):
+                    socket_perms = os.stat(docker_socket)
+                    print(f"\nDocker socket details:")
+                    print(f"Permissions: {oct(socket_perms.st_mode)[-4:]}")
+                    print(f"Owner: {socket_perms.st_uid}")
+                    print(f"Group: {socket_perms.st_gid}")
+                else:
+                    print("\nError: Docker socket not found at /var/run/docker.sock")
+
+            sys.exit(1)
+
+    except Exception as e:
+        print(f"Error checking Docker: {str(e)}")
         sys.exit(1)
 
 def get_docker_compose_cmd():
