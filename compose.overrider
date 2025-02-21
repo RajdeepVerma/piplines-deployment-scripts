@@ -6,6 +6,33 @@ import yaml
 import os
 import sys
 import subprocess
+import shutil
+
+def check_docker():
+    """Check if Docker is available"""
+    if not shutil.which('docker'):
+        print("Error: Docker is not installed or not in PATH")
+        sys.exit(1)
+    try:
+        subprocess.run(['docker', 'info'], check=True, capture_output=True)
+    except subprocess.CalledProcessError:
+        print("Error: Docker daemon is not running")
+        sys.exit(1)
+
+def get_docker_compose_cmd():
+    """Determine which docker compose command to use"""
+    # Check for new docker compose
+    try:
+        subprocess.run(['docker', 'compose', 'version'],
+                      check=True, capture_output=True)
+        return ['docker', 'compose']
+    except subprocess.CalledProcessError:
+        # Check for docker-compose
+        if shutil.which('docker-compose'):
+            return ['docker-compose']
+        else:
+            print("Error: Neither 'docker compose' nor 'docker-compose' found")
+            sys.exit(1)
 
 def load_compose_file():
     # Try docker-compose.yaml first
@@ -30,6 +57,13 @@ def load_deployment_config():
             return yaml.load(file, Loader=yaml.FullLoader)
     else:
         raise FileNotFoundError("No deployment-config.yaml or deployment-config.yml found")
+
+# Check Docker availability first
+check_docker()
+
+# Get appropriate docker compose command
+compose_cmd = get_docker_compose_cmd()
+print(f"Using compose command: {' '.join(compose_cmd)}")
 
 # Try to load the docker-compose file, exit if not found
 try:
@@ -88,19 +122,19 @@ try:
     print("Starting clean deployment...")
 
     # Stop existing containers
-    subprocess.run(["docker-compose", "stop"], check=True)
+    subprocess.run(compose_cmd + ["stop"], check=True)
 
     # Remove existing containers
-    subprocess.run(["docker-compose", "rm", "-f"], check=True)
+    subprocess.run(compose_cmd + ["rm", "-f"], check=True)
 
     # Clean up system (remove unused containers, networks, images)
     subprocess.run(["docker", "system", "prune", "-f"], check=True)
 
     # Pull latest images
-    subprocess.run(["docker-compose", "pull"], check=True)
+    subprocess.run(compose_cmd + ["pull"], check=True)
 
     # Deploy with new configuration (up -d for detached mode)
-    subprocess.run(["docker-compose", "up", "-d"], check=True)
+    subprocess.run(compose_cmd + ["up", "-d"], check=True)
 
     print(f"Successfully deployed {ConnectorName} with clean environment")
 except subprocess.CalledProcessError as e:
