@@ -168,23 +168,39 @@ with open('docker-compose.override.yaml', 'w') as file:
 
 print("Generated docker-compose.override.yaml successfully")
 
+def run_command(cmd, description):
+    """Run a command and handle its output"""
+    print(f"\n=== {description} ===")
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        print(result.stdout)
+        return result
+    except subprocess.CalledProcessError as e:
+        print(f"Error during {description}:")
+        print(f"Command failed with exit code {e.returncode}")
+        print("\nError output:")
+        print(e.stderr)
+        raise
+
 # Deploy using docker-compose with clean deployment
 try:
-    print("Starting clean deployment...")
+    print("\nStarting clean deployment...")
 
     # Stop and remove containers, networks, and volumes
-    subprocess.run(compose_cmd + ["down"], check=True)
-
-    # Clean up system (disabled to preserve cached images and avoid pull limits)
-    # subprocess.run(["docker", "system", "prune", "-f"], check=True)
+    run_command(compose_cmd + ["down"], "Stopping and removing existing containers")
 
     # Pull latest images
-    subprocess.run(compose_cmd + ["pull"], check=True)
+    run_command(compose_cmd + ["pull"], "Pulling latest images")
 
     # Deploy with new configuration (up -d for detached mode)
-    subprocess.run(compose_cmd + ["up", "-d"], check=True)
+    run_command(compose_cmd + ["up", "-d"], "Starting containers")
 
-    print(f"Successfully deployed {ConnectorName} with clean environment")
+    print(f"\nSuccessfully deployed {ConnectorName} with clean environment")
 except subprocess.CalledProcessError as e:
-    print(f"Error during deployment: {e}")
+    print("\n=== Deployment failed! ===")
     sys.exit(1)
