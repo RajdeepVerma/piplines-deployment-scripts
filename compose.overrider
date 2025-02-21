@@ -172,14 +172,11 @@ print("Generated docker-compose.override.yaml successfully")
 try:
     print("Starting clean deployment...")
 
-    # Stop existing containers
-    subprocess.run(compose_cmd + ["stop"], check=True)
+    # Stop and remove containers, networks, and volumes
+    subprocess.run(compose_cmd + ["down"], check=True)
 
-    # Remove existing containers
-    subprocess.run(compose_cmd + ["rm", "-f"], check=True)
-
-    # Clean up system (remove unused containers, networks, images)
-    subprocess.run(["docker", "system", "prune", "-f"], check=True)
+    # Clean up system (disabled to preserve cached images and avoid pull limits)
+    # subprocess.run(["docker", "system", "prune", "-f"], check=True)
 
     # Pull latest images
     subprocess.run(compose_cmd + ["pull"], check=True)
