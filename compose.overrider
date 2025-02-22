@@ -120,6 +120,8 @@ except FileNotFoundError as e:
 # Extract deployment configuration values
 ConnectorName = deployment_config['name']
 DomainName = deployment_config['domain']
+# Check if port is specified in deployment config
+PortNumber = deployment_config.get('port')
 
 # Ensure networks configuration exists at root level
 if 'networks' not in docker_compose:
@@ -156,11 +158,20 @@ for service_name, service_config in docker_compose['services'].items():
             service_config['labels'] = []
 
         # Add/update container labels as a list
-        service_config['labels'] = [
+        labels = [
             'traefik.enable=true',
             f'traefik.http.routers.{ConnectorName}.entrypoints=web',
             f'traefik.http.routers.{ConnectorName}.rule=Host(`{DomainName}`)'
         ]
+
+        # Add port-specific labels if port is specified
+        if PortNumber:
+            labels.extend([
+                f'traefik.http.services.{ConnectorName}.loadbalancer.server.port={PortNumber}',
+                f'traefik.http.routers.{ConnectorName}.service={ConnectorName}'
+            ])
+
+        service_config['labels'] = labels
 
 # Write the modified configuration to docker-compose.override.yaml
 with open('docker-compose.override.yaml', 'w') as file:
@@ -197,8 +208,8 @@ try:
     # Pull latest images
     run_command(compose_cmd + ["pull"], "Pulling latest images")
 
-    # Deploy with new configuration (up -d for detached mode)
-    run_command(compose_cmd + ["up", "-d"], "Starting containers")
+    # Deploy with new configuration using override file explicitly
+    run_command(compose_cmd + ["up", "-f", "docker-compose.override.yaml", "-d"], "Starting containers")
 
     print(f"\nSuccessfully deployed {ConnectorName} with clean environment")
 except subprocess.CalledProcessError as e:
