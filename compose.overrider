@@ -208,8 +208,8 @@ try:
     # Pull latest images
     run_command(compose_cmd + ["pull"], "Pulling latest images")
 
-    # Deploy with new configuration using override file explicitly
-    run_command(compose_cmd + ["up", "-f", "docker-compose.override.yaml", "-d"], "Starting containers")
+    # Deploy with new configuration (correct flag order)
+    run_command(compose_cmd + ["-f", "docker-compose.override.yaml", "up", "-d"], "Starting containers")
 
     print(f"\nSuccessfully deployed {ConnectorName} with clean environment")
 except subprocess.CalledProcessError as e:
