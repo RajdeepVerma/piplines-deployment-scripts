@@ -88,17 +88,53 @@ def load_compose_file():
     else:
         raise FileNotFoundError("No docker-compose.yaml or docker-compose.yml found")
 
-def load_deployment_config():
-    # Try deployment-config.yaml first
-    if os.path.exists("deployment-config.yaml"):
-        with open("deployment-config.yaml", "r") as file:
-            return yaml.load(file, Loader=yaml.FullLoader)
-    # Fall back to deployment-config.yml
-    elif os.path.exists("deployment-config.yml"):
-        with open("deployment-config.yml", "r") as file:
-            return yaml.load(file, Loader=yaml.FullLoader)
-    else:
-        raise FileNotFoundError("No deployment-config.yaml or deployment-config.yml found")
+def validate_env_vars():
+    """Validate required environment variables"""
+    required_vars = {
+        'DEPLOYMENT_NAME': os.getenv('DEPLOYMENT_NAME', '').strip(),
+        'DEPLOYMENT_DOMAIN': os.getenv('DEPLOYMENT_DOMAIN', '').strip()
+    }
+
+    # Check for missing or empty variables
+    missing_vars = [var for var, value in required_vars.items() if not value]
+
+    if missing_vars:
+        print("Error: Missing or empty required environment variables:")
+        for var in missing_vars:
+            print(f"- {var}")
+        sys.exit(1)
+
+    # Validate port if provided
+    port = os.getenv('DEPLOYMENT_PORT', '').strip()
+    if port:
+        try:
+            int(port)  # Validate port is a number
+        except ValueError:
+            print("Error: DEPLOYMENT_PORT must be a number")
+            sys.exit(1)
+
+    return required_vars
+
+def run_command(cmd, description):
+    """Run a command and handle its output"""
+    print(f"\n=== {description} ===")
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        if result.stdout:
+            print(result.stdout)
+        return result
+    except subprocess.CalledProcessError as e:
+        print(f"Error during {description}:")
+        print(f"Command failed with exit code {e.returncode}")
+        if e.stderr:
+            print("\nError output:")
+            print(e.stderr)
+        raise
 
 # Check Docker availability first
 check_docker()
@@ -111,17 +147,17 @@ print(f"Using compose command: {' '.join(compose_cmd)}")
 try:
     # Load docker-compose configuration
     docker_compose = load_compose_file()
-    # Load deployment configuration
-    deployment_config = load_deployment_config()
+    # Validate environment variables
+    env_vars = validate_env_vars()
 except FileNotFoundError as e:
     print(f"Error: {e}")
     sys.exit(1)
 
-# Extract deployment configuration values
-ConnectorName = deployment_config['name']
-DomainName = deployment_config['domain']
-# Check if port is specified in deployment config
-PortNumber = deployment_config.get('port')
+# Extract configuration values from environment
+ConnectorName = os.getenv('DEPLOYMENT_NAME')
+DomainName = os.getenv('DEPLOYMENT_DOMAIN')
+# Port is optional
+PortNumber = os.getenv('DEPLOYMENT_PORT')
 
 # Ensure networks configuration exists at root level
 if 'networks' not in docker_compose:
@@ -179,36 +215,17 @@ with open('docker-compose.override.yaml', 'w') as file:
 
 print("Generated docker-compose.override.yaml successfully")
 
-def run_command(cmd, description):
-    """Run a command and handle its output"""
-    print(f"\n=== {description} ===")
-    try:
-        result = subprocess.run(
-            cmd,
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        print(result.stdout)
-        return result
-    except subprocess.CalledProcessError as e:
-        print(f"Error during {description}:")
-        print(f"Command failed with exit code {e.returncode}")
-        print("\nError output:")
-        print(e.stderr)
-        raise
-
 # Deploy using docker-compose with clean deployment
 try:
     print("\nStarting clean deployment...")
 
     # Stop and remove containers, networks, and volumes
-    run_command(compose_cmd + ["down"], "Stopping and removing existing containers")
+    run_command(compose_cmd + ["-f", "docker-compose.override.yaml", "down"], "Stopping and removing existing containers")
 
     # Pull latest images
     run_command(compose_cmd + ["pull"], "Pulling latest images")
 
-    # Deploy with new configuration (correct flag order)
+    # Deploy with new configuration
     run_command(compose_cmd + ["-f", "docker-compose.override.yaml", "up", "-d"], "Starting containers")
 
     print(f"\nSuccessfully deployed {ConnectorName} with clean environment")
