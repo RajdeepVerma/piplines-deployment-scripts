@@ -203,8 +203,8 @@ for service_name, service_config in docker_compose['services'].items():
         # Add port-specific labels if port is specified
         if PortNumber:
             labels.extend([
-                f'traefik.http.services.{ConnectorName}.loadbalancer.server.port={PortNumber}',
-                f'traefik.http.routers.{ConnectorName}.service={ConnectorName}'
+                f'traefik.http.services.{ConnectorName}.loadbalancer.server.port={PortNumber}' #,
+              #  f'traefik.http.routers.{ConnectorName}.service={ConnectorName}'
             ])
 
         service_config['labels'] = labels
