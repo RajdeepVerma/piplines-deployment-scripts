@@ -1,0 +1,124 @@
+"""
+Docker Compose Override Generator
+Created by @RajdeepVerma
+
+This script modifies docker-compose configuration to:
+1. Remove port mappings
+2. Add Traefik routing
+3. Configure frontend network
+"""
+
+import yaml
+import os
+import sys
+
+
+def load_compose_file():
+    """Load docker-compose.yaml/yml configuration file"""
+    if os.path.exists("docker-compose.yaml"):
+        with open("docker-compose.yaml", "r") as file:
+            return yaml.load(file, Loader=yaml.FullLoader)
+    elif os.path.exists("docker-compose.yml"):
+        with open("docker-compose.yml", "r") as file:
+            return yaml.load(file, Loader=yaml.FullLoader)
+    else:
+        raise FileNotFoundError(
+            "No docker-compose.yaml or docker-compose.yml found")
+
+
+def validate_env_vars():
+    """Validate required environment variables"""
+    required_vars = {
+        'DEPLOYMENT_NAME': os.getenv('DEPLOYMENT_NAME', '').strip(),
+        'DEPLOYMENT_DOMAIN': os.getenv('DEPLOYMENT_DOMAIN', '').strip()
+    }
+
+    missing_vars = [var for var, value in required_vars.items() if not value]
+
+    if missing_vars:
+        print("Error: Missing or empty required environment variables:")
+        for var in missing_vars:
+            print(f"- {var}")
+        sys.exit(1)
+
+    port = os.getenv('DEPLOYMENT_PORT', '').strip()
+    if port:
+        try:
+            int(port)
+        except ValueError:
+            print("Error: DEPLOYMENT_PORT must be a number")
+            sys.exit(1)
+
+    return required_vars
+
+
+def main():
+    try:
+        # Load docker-compose configuration
+        docker_compose = load_compose_file()
+        # Validate environment variables
+        validate_env_vars()
+
+        # Extract configuration values
+        connector_name = os.getenv('DEPLOYMENT_NAME')
+        domain_name = os.getenv('DEPLOYMENT_DOMAIN')
+        port_number = os.getenv('DEPLOYMENT_PORT')
+
+        # Configure root level networks
+        if 'networks' not in docker_compose:
+            docker_compose['networks'] = {}
+        docker_compose['networks']['frontend'] = {'external': True}
+
+        # Validate services
+        if 'services' not in docker_compose or not docker_compose['services']:
+            print("Error: No services found in docker-compose file")
+            sys.exit(1)
+
+        # Get first container name
+        container_name = next(iter(docker_compose['services'].keys()))
+
+        # Process containers
+        for service_name, service_config in docker_compose['services'].items():
+            # Remove ports from all containers
+            if 'ports' in service_config:
+                service_config.pop('ports')
+
+            # Configure first container
+            if service_name == container_name:
+                # Setup networking
+                if 'networks' not in service_config:
+                    service_config['networks'] = {}
+                service_config['networks']['frontend'] = {}
+
+                # Configure labels
+                labels = [
+                    'traefik.enable=true',
+                    f'traefik.http.routers.{connector_name}.entrypoints=web',
+                    f'traefik.http.routers.{connector_name}.rule=Host(`{domain_name}`)'
+                ]
+
+                if port_number:
+                    labels.extend([
+                        f'traefik.http.services.{connector_name}.loadbalancer.server.port={port_number}',
+                        f'traefik.http.routers.{connector_name}.service={connector_name}'
+                    ])
+
+                service_config['labels'] = labels
+
+        # Write override file
+        with open('docker-compose.override.yaml', 'w') as file:
+            yaml.dump(docker_compose, file, sort_keys=False,
+                      indent=2, default_flow_style=False)
+
+        print("Generated docker-compose.override.yaml successfully")
+
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
