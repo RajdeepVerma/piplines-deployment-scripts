@@ -12,7 +12,6 @@ import yaml
 import os
 import sys
 
-
 def load_compose_file():
     """Load docker-compose.yaml/yml configuration file"""
     if os.path.exists("docker-compose.yaml"):
@@ -22,9 +21,7 @@ def load_compose_file():
         with open("docker-compose.yml", "r") as file:
             return yaml.load(file, Loader=yaml.FullLoader)
     else:
-        raise FileNotFoundError(
-            "No docker-compose.yaml or docker-compose.yml found")
-
+        raise FileNotFoundError("No docker-compose.yaml or docker-compose.yml found")
 
 def validate_env_vars():
     """Validate required environment variables"""
@@ -50,7 +47,6 @@ def validate_env_vars():
             sys.exit(1)
 
     return required_vars
-
 
 def main():
     try:
@@ -107,8 +103,7 @@ def main():
 
         # Write override file
         with open('docker-compose.override.yaml', 'w') as file:
-            yaml.dump(docker_compose, file, sort_keys=False,
-                      indent=2, default_flow_style=False)
+            yaml.dump(docker_compose, file, sort_keys=False, indent=2, default_flow_style=False)
 
         print("Generated docker-compose.override.yaml successfully")
 
@@ -118,7 +113,6 @@ def main():
     except Exception as e:
         print(f"Error: {str(e)}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
